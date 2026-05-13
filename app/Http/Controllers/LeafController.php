@@ -22,42 +22,21 @@ class LeafController extends Controller
      */
     public function checkLeaf(Request $request)
     {
-        // 1. Validasi input
         $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg|max:5120', // Max 5MB
+            'image' => 'required|image|max:5120',
+            'model' => 'required|in:resnet,mobilenet' // Tambahkan validasi tipe model
         ]);
 
-        try {
-            $image = $request->file('image');
+        $model = $request->input('model');
+        $image = $request->file('image');
 
-            // 2. Kirim gambar ke FastAPI Python
-            // Pastikan Python Service (main.py) sudah running di port 5000
-            $response = Http::attach(
-                'file',
-                file_get_contents($image),
-                $image->getClientOriginalName()
-            )->post('http://127.0.0.1:5000/predict');
+        // URL dinamis: localhost:5000/predict/resnet atau /predict/mobilenet
+        $response = Http::attach(
+            'file',
+            file_get_contents($image),
+            $image->getClientOriginalName()
+        )->post("http://127.0.0.1:5000/predict/{$model}");
 
-            // 3. Cek apakah request ke Python berhasil
-            if ($response->successful()) {
-                $data = $response->json();
-                Log::info('AI Prediction Result:', $data);
-
-                return response()->json($data);
-            }
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'AI Service tidak merespons dengan benar.'
-            ], 500);
-
-        } catch (\Exception $e) {
-            Log::error('Leaf Detection Error: ' . $e->getMessage());
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
-            ], 500);
-        }
+        return response()->json($response->json());
     }
 }

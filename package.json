@@ -21,7 +21,11 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "@primeuix/themes": "^2.0.3",
         "chart.js": "^4.5.1",
+        "primeicons": "^7.0.0",
+        "primevue": "^4.5.5",
+        "sweetalert2": "^11.26.24",
         "vue-chartjs": "^5.3.3"
     }
 }

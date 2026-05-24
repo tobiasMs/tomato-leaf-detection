@@ -23,13 +23,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Load model dengan nama file yang sesuai hasil training kamu
 model_resnet = tf.keras.models.load_model(os.path.join(BASE_DIR, "resnet50_binary_final.keras"))
 model_mobilenet = tf.keras.models.load_model(os.path.join(BASE_DIR, "mobilenet_v3_binary_final.keras"))
-
+model_efficientnet = tf.keras.models.load_model(os.path.join(BASE_DIR, "efficientnetb0_binary_final.keras"))
 CLASS_NAMES = ["Diseased", "Healthy"]
 
 def preprocess_image(image_bytes, model_type):
     # SINRONISASI SIZE:
     # ResNet = 224, MobileNet = 300
-    target_size = (224, 224) if model_type == "resnet" else (300, 300)
+    target_size = (300, 300)
 
     img = Image.open(io.BytesIO(image_bytes))
     img = img.convert('RGB')
@@ -41,10 +41,14 @@ def preprocess_image(image_bytes, model_type):
     if model_type == "resnet":
         # ResNet: WAJIB pakai preprocess_input (Zero-centering BGR)
         img_array = resnet_preprocess(img_array)
-    else:
+    elif model_type == "mobilenet":
         # MobileNetV3: Raw (0-255) karena kodingan training pakai include_preprocessing internal
         img_array = img_array.astype(np.float32)
-
+    elif model_type == "efficientnet":
+        # EfficientNetB0: Raw (0-255) karena kodingan training pakai include_preprocessing internal
+        img_array = img_array.astype(np.float32)
+    else:
+        raise ValueError("Invalid model type")
     return img_array
 
 @app.post("/predict/{model_name}")
@@ -54,6 +58,8 @@ async def predict(model_name: str, file: UploadFile = File(...)):
             current_model = model_resnet
         elif model_name == "mobilenet":
             current_model = model_mobilenet
+        elif model_name == "efficientnet":
+            current_model = model_efficientnet
         else:
             return {"status": "error", "message": "Model not found"}
 

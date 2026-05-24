@@ -13,8 +13,16 @@ const loading = ref(false);
 const result = ref(null);
 const selectedModel = ref('resnet');
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const errorMessage = ref(null);
+const lastRequestTime = ref(0);
 
-// Data untuk Chart
+const ALLOWED_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/jpg',
+    'image/webp'
+];
+
 const chartData = ref({
     labels: [],
     datasets: [{ data: [], backgroundColor: '#10b994' }]
@@ -22,38 +30,90 @@ const chartData = ref({
 
 const onFileChange = (e) => {
     if (loading.value) return;
+    errorMessage.value = null;
 
     const file = e.target.files[0];
     if (!file) return;
-
-    if (file.size > MAX_FILE_SIZE) {
-        alert('File terlalu besar. Maksimum 5MB.');
-        // reset the file input
+    if (!ALLOWED_TYPES.includes(file.type)) {
+        errorMessage.value =
+            'Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau WEBP.';
         e.target.value = '';
         selectedFile.value = null;
         imagePreview.value = null;
         return;
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+        errorMessage.value =
+            'File terlalu besar. Maksimum 5MB.';
+        e.target.value = '';
+        selectedFile.value = null;
+        imagePreview.value = null;
+        return;
+    }
     selectedFile.value = file;
-    imagePreview.value = URL.createObjectURL(file);
+    imagePreview.value =
+        URL.createObjectURL(file);
 };
 
 const uploadImage = async () => {
-    if (loading.value || !selectedFile.value) return;
-
+    const now = Date.now();
+    if (now - lastRequestTime.value < 3000) {
+        errorMessage.value =
+            'Terlalu banyak request. Tunggu beberapa detik.';
+        return;
+    }
+    lastRequestTime.value = now;
+    if (loading.value || !selectedFile.value)
+        return;
+    errorMessage.value = null;
+    result.value = null;
     loading.value = true;
+
     const formData = new FormData();
-    formData.append('image', selectedFile.value);
-    formData.append('model', selectedModel.value);
+
+    formData.append(
+        'image',
+        selectedFile.value
+    );
+
+    formData.append(
+        'model',
+        selectedModel.value
+    );
 
     try {
-        const response = await axios.post(route('leaf.check'), formData);
+        const response = await axios.post(
+            route('leaf.check'),
+            formData,
+            {
+                headers: {
+                    'Content-Type':
+                        'multipart/form-data'
+                },
+                timeout: 120000
+            }
+        );
+
+        if (
+            response.data.status === 'error'
+        ) {
+
+            errorMessage.value =
+                response.data.message ||
+                'Terjadi kesalahan saat analisis';
+
+            return;
+        }
         result.value = response.data;
 
-        // Update Chart Data dari API Python
-        const labels = Object.keys(response.data.all_predictions);
-        const values = Object.values(response.data.all_predictions).map(v => v * 100);
+        const labels = Object.keys(
+            response.data.all_predictions
+        );
+
+        const values = Object.values(
+            response.data.all_predictions
+        ).map(v => v * 100);
 
         chartData.value = {
             labels: labels,
@@ -64,7 +124,18 @@ const uploadImage = async () => {
             }]
         };
     } catch (error) {
-        alert("Gagal melakukan analisis");
+        console.error(error);
+        if (error.response) {
+            errorMessage.value =
+                error.response.data.message ||
+                'Server gagal memproses gambar';
+        } else if (error.code === 'ECONNABORTED') {
+            errorMessage.value =
+                'Request timeout. Server terlalu lama merespon.';
+        } else {
+            errorMessage.value =
+                'Gagal terhubung ke server AI.';
+        }
     } finally {
         loading.value = false;
     }
@@ -87,6 +158,24 @@ const uploadImage = async () => {
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+                <div v-if="errorMessage" class="md:col-span-2 rounded-lg border border-red-300 bg-red-50 p-4" >
+                    <div class="flex items-start gap-3">
+
+                        <svg class="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                        </svg>
+
+                        <div>
+                            <h4 class="font-semibold text-red-800">
+                                Terjadi Kesalahan
+                            </h4>
+
+                            <p class="text-sm text-red-700">
+                                {{ errorMessage }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     <!-- Kiri: Upload Area -->
@@ -111,6 +200,9 @@ const uploadImage = async () => {
                                 </label>
                                 <label class="flex items-center">
                                     <input type="radio" v-model="selectedModel" value="mobilenet" class="mr-2" :disabled="loading"> MobileNetV3
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" v-model="selectedModel" value="efficientnet" class="mr-2" :disabled="loading"> EfficientNetB0
                                 </label>
                                 <!-- <label class="flex items-center">
                                     <input type="radio" v-model="selectedModel" value="efficientnet" class="mr-2" :disabled="loading"> EfficientNetB0
